@@ -3,7 +3,7 @@ import { PrismaClient, Species, AppointmentStatus, PaymentMethod, PaymentStatus 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Starting database seeding...');
+  console.log('Starting database seeding...');
 
   // 1. Seed Pet Owners
   const owner1 = await prisma.petOwner.upsert({
@@ -39,7 +39,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Pet Owners seeded (3)');
+  console.log('Pet Owners seeded (3)');
 
   // 2. Seed Veterinarians
   const vet1 = await prisma.veterinarian.upsert({
@@ -64,7 +64,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Veterinarians seeded (2)');
+  console.log('Veterinarians seeded (2)');
 
   // 3. Seed Pets
   // Check if pets exist for owners
@@ -153,7 +153,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Pets seeded (5)');
+  console.log('Pets seeded (5)');
 
   // 4. Seed Appointments
   // Appointment 1: Milo with Dr. Sarah (Completed)
@@ -219,7 +219,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Appointments seeded (3)');
+  console.log('Appointments seeded (3)');
 
   // 5. Seed Medical Records
   // Record for appt1
@@ -254,7 +254,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Medical Records seeded (2)');
+  console.log('Medical Records seeded (2)');
 
   // 6. Seed Payments
   // Payment for appt1 (Paid)
@@ -296,15 +296,16 @@ async function main() {
     },
   });
 
-  console.log('✅ Payments seeded (3)');
-  console.log('🎉 Seeding successfully completed!');
+  console.log('Payments seeded (3)');
+  console.log('Seeding successfully completed!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seeding failed:', e);
+    console.error('Seeding failed:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
+
