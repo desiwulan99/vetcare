@@ -1,0 +1,136 @@
+// Prisma Schema for VetCare API (Veterinary Clinic Management System)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Species {
+  CAT
+  DOG
+  RABBIT
+  BIRD
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  EWALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model PetOwner {
+  id        Int      @id @default(autoincrement())
+  fullName  String
+  phone     String
+  email     String   @unique
+  address   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pets Pet[]
+
+  @@map("pet_owners")
+}
+
+model Pet {
+  id          Int      @id @default(autoincrement())
+  name        String
+  species     Species
+  breed       String
+  gender      String
+  dateOfBirth DateTime
+  weight      Float
+  ownerId     Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner          PetOwner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+
+  @@map("pets")
+}
+
+model Veterinarian {
+  id             Int      @id @default(autoincrement())
+  fullName       String
+  specialization String
+  phone          String
+  email          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+
+  @@map("veterinarians")
+}
+
+model Appointment {
+  id              Int               @id @default(autoincrement())
+  petId           Int
+  veterinarianId  Int
+  appointmentDate DateTime
+  reason          String
+  status          AppointmentStatus @default(SCHEDULED)
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  pet            Pet            @relation(fields: [petId], references: [id], onDelete: Restrict)
+  veterinarian   Veterinarian   @relation(fields: [veterinarianId], references: [id], onDelete: Restrict)
+  medicalRecord  MedicalRecord?
+  payment        Payment?
+
+  @@map("appointments")
+}
+
+model MedicalRecord {
+  id             Int      @id @default(autoincrement())
+  petId          Int
+  veterinarianId Int
+  appointmentId  Int      @unique
+  diagnosis      String
+  symptoms       String
+  treatment      String
+  prescription   String
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  pet          Pet          @relation(fields: [petId], references: [id], onDelete: Restrict)
+  veterinarian Veterinarian @relation(fields: [veterinarianId], references: [id], onDelete: Restrict)
+  appointment  Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@map("medical_records")
+}
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  appointmentId Int           @unique
+  amount        Float
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@map("payments")
+}

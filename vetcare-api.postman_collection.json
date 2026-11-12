@@ -1,0 +1,340 @@
+{
+  "info": {
+    "_postman_id": "c1f72d4a-581b-4d64-9b51-768a3bb31e5f",
+    "name": "VetCare API",
+    "description": "Postman Collection for VetCare API (Veterinary Clinic Management System)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Root Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/", "host": ["{{baseUrl}}"], "path": [""] }
+          }
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pet Owners",
+      "item": [
+        {
+          "name": "Get All Owners",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/owners", "host": ["{{baseUrl}}"], "path": ["api", "owners"] }
+          }
+        },
+        {
+          "name": "Get Owner By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/owners/1", "host": ["{{baseUrl}}"], "path": ["api", "owners", "1"] }
+          }
+        },
+        {
+          "name": "Create Owner",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Citra Kirana\",\n  \"phone\": \"081299887766\",\n  \"email\": \"citra.kirana@example.com\",\n  \"address\": \"Jl. Anggrek No. 20, Jakarta\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/owners", "host": ["{{baseUrl}}"], "path": ["api", "owners"] }
+          }
+        },
+        {
+          "name": "Update Owner",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"Jl. Anggrek No. 25, Jakarta\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/owners/1", "host": ["{{baseUrl}}"], "path": ["api", "owners", "1"] }
+          }
+        },
+        {
+          "name": "Delete Owner",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/owners/99", "host": ["{{baseUrl}}"], "path": ["api", "owners", "99"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pets",
+      "item": [
+        {
+          "name": "Get All Pets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/pets", "host": ["{{baseUrl}}"], "path": ["api", "pets"] }
+          }
+        },
+        {
+          "name": "Get Pet By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/pets/1", "host": ["{{baseUrl}}"], "path": ["api", "pets", "1"] }
+          }
+        },
+        {
+          "name": "Get Pets By Owner ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/pets/owner/1", "host": ["{{baseUrl}}"], "path": ["api", "pets", "owner", "1"] }
+          }
+        },
+        {
+          "name": "Create Pet",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Oreo\",\n  \"species\": \"CAT\",\n  \"breed\": \"British Shorthair\",\n  \"gender\": \"Male\",\n  \"dateOfBirth\": \"2023-06-15\",\n  \"weight\": 4.1,\n  \"ownerId\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/pets", "host": ["{{baseUrl}}"], "path": ["api", "pets"] }
+          }
+        },
+        {
+          "name": "Update Pet",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight\": 4.4\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/pets/1", "host": ["{{baseUrl}}"], "path": ["api", "pets", "1"] }
+          }
+        },
+        {
+          "name": "Delete Pet",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/pets/99", "host": ["{{baseUrl}}"], "path": ["api", "pets", "99"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Veterinarians",
+      "item": [
+        {
+          "name": "Get All Veterinarians",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/veterinarians", "host": ["{{baseUrl}}"], "path": ["api", "veterinarians"] }
+          }
+        },
+        {
+          "name": "Get Veterinarian By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/veterinarians/1", "host": ["{{baseUrl}}"], "path": ["api", "veterinarians", "1"] }
+          }
+        },
+        {
+          "name": "Create Veterinarian",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"drh. Bima Satria\",\n  \"specialization\": \"Veterinary Dentistry\",\n  \"phone\": \"081344556677\",\n  \"email\": \"dr.bima@vetcare.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/veterinarians", "host": ["{{baseUrl}}"], "path": ["api", "veterinarians"] }
+          }
+        },
+        {
+          "name": "Update Veterinarian",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specialization\": \"Veterinary Dentistry & Maxillofacial Surgery\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/veterinarians/1", "host": ["{{baseUrl}}"], "path": ["api", "veterinarians", "1"] }
+          }
+        },
+        {
+          "name": "Delete Veterinarian",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/veterinarians/99", "host": ["{{baseUrl}}"], "path": ["api", "veterinarians", "99"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "Get All Appointments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/appointments", "host": ["{{baseUrl}}"], "path": ["api", "appointments"] }
+          }
+        },
+        {
+          "name": "Get Appointment By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/appointments/1", "host": ["{{baseUrl}}"], "path": ["api", "appointments", "1"] }
+          }
+        },
+        {
+          "name": "Get Appointments By Pet ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/appointments/pet/1", "host": ["{{baseUrl}}"], "path": ["api", "appointments", "pet", "1"] }
+          }
+        },
+        {
+          "name": "Create Appointment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"petId\": 1,\n  \"veterinarianId\": 2,\n  \"appointmentDate\": \"2026-11-28T09:00:00Z\",\n  \"reason\": \"Pembersihan karang gigi\",\n  \"notes\": \"Puasa 6 jam sebelum tindakan\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/appointments", "host": ["{{baseUrl}}"], "path": ["api", "appointments"] }
+          }
+        },
+        {
+          "name": "Update Appointment Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/appointments/1/status", "host": ["{{baseUrl}}"], "path": ["api", "appointments", "1", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Medical Records",
+      "item": [
+        {
+          "name": "Get All Medical Records",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/medical-records", "host": ["{{baseUrl}}"], "path": ["api", "medical-records"] }
+          }
+        },
+        {
+          "name": "Get Medical Record By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/medical-records/1", "host": ["{{baseUrl}}"], "path": ["api", "medical-records", "1"] }
+          }
+        },
+        {
+          "name": "Get Medical Records By Pet ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/medical-records/pet/1", "host": ["{{baseUrl}}"], "path": ["api", "medical-records", "pet", "1"] }
+          }
+        },
+        {
+          "name": "Create Medical Record",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"petId\": 1,\n  \"veterinarianId\": 1,\n  \"appointmentId\": 2,\n  \"diagnosis\": \"Dermatitis alergi kutu\",\n  \"symptoms\": \"Gatal hebat dan kemerahan di area ekor\",\n  \"treatment\": \"Spot-on antiparasit dan mandi obat\",\n  \"prescription\": \"Antihistamin oral 1x sehari\",\n  \"notes\": \"Hindari kontak dengan hewan lain sementara\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/medical-records", "host": ["{{baseUrl}}"], "path": ["api", "medical-records"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Get All Payments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api", "payments"] }
+          }
+        },
+        {
+          "name": "Get Payment By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/payments/1", "host": ["{{baseUrl}}"], "path": ["api", "payments", "1"] }
+          }
+        },
+        {
+          "name": "Get Payments By Owner ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/payments/owner/1", "host": ["{{baseUrl}}"], "path": ["api", "payments", "owner", "1"] }
+          }
+        },
+        {
+          "name": "Update Payment Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAID\",\n  \"paidAt\": \"2026-11-12T10:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/payments/2/status", "host": ["{{baseUrl}}"], "path": ["api", "payments", "2", "status"] }
+          }
+        }
+      ]
+    }
+  ]
+}
