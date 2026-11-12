@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vetcare_user} -d ${POSTGRES_DB:-vetcare_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vetcare_user} -d ${POSTGRES_DB:-vetcare_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -23,8 +23,6 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    deploy:
-      replicas: 3
     environment:
       PORT: 3000
       NODE_ENV: production
