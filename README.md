@@ -1,41 +1,388 @@
 # VetCare API — Veterinary Clinic Management System
 
-Backend REST API untuk sistem manajemen klinik hewan (**Veterinary Clinic Management System**) yang dibangun menggunakan Node.js LTS, TypeScript, Express.js, Prisma ORM, dan PostgreSQL dengan orkestrasi **Docker Compose**. Proyek ini dirancang secara modular, terstruktur, type-safe, serta mendukung persistensi data penuh menggunakan Docker Named Volumes.
+Backend REST API untuk sistem manajemen klinik hewan (**Veterinary Clinic Management System**) yang dibangun menggunakan Node.js LTS, TypeScript, Express.js, Prisma ORM, PostgreSQL, dan Nginx Reverse Proxy dengan orkestrasi **Docker Compose**. Proyek ini dirancang secara modular, terstruktur, type-safe, serta mendukung persistensi data penuh menggunakan Docker Named Volumes.
+
+---
+
+## Ringkasan Pembaruan Tugas 2 (Tugas 2 Overview)
+
+Pada **Tugas 2**, arsitektur sistem VetCare ditingkatkan dari *single-instance backend* menjadi arsitektur *production-grade reverse proxy & high-availability load balancing*:
+
+1. **Nginx Reverse Proxy sebagai Satu-Satunya Pintu Masuk:**
+   - Nginx menjadi satu-satunya service yang mengekspos port ke host machine (`0.0.0.0:80->80/tcp`).
+   - Service `backend` dan `database` tidak memiliki konfigurasi `ports` (isolasi port penuh di level host).
+2. **Backend 3 Replicas (High Availability):**
+   - Service `backend` dijalankan sebanyak **3 replika/container** (`sc-backend-1`, `sc-backend-2`, `sc-backend-3`) menggunakan konfigurasi image yang identik.
+   - Ketiga replika backend terhubung ke satu database PostgreSQL bersama (`vetcare-postgres`) melalui Docker virtual bridge network (`vetcare-network`).
+3. **Round-Robin Load Balancing dengan Upstream Zone:**
+   - Nginx mendistribusikan beban request secara merata ke ketiga instance backend menggunakan `upstream` dengan direktif `zone`.
+   - Nginx menambahkan response header `X-Upstream: $upstream_addr` untuk membuktikan secara transparan instance backend mana yang menangani request.
+4. **Rate Limiting:**
+   - Diterapkan `limit_req_zone` berukuran 10MB dengan rate `5r/s` dan `burst=5 nodelay` pada rute API `/api/`.
+   - Menggunakan `limit_req_status 429` (HTTP 429 Too Many Requests) sesuai standar RFC 6585.
+5. **Security Headers:**
+   - Header keamanan HTTP disematkan secara global dengan parameter `always`, termasuk `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, dan `X-XSS-Protection: 1; mode=block`.
+6. **Kompresi Gzip Dinamis:**
+   - Kompresi Gzip aktif (`gzip on;`) untuk MIME type `application/json` dengan `gzip_proxied any` dan `gzip_min_length 256` untuk menghemat bandwidth transfer data API.
 
 ---
 
 ## Daftar Isi
-- [1. Deskripsi Proyek](#1-deskripsi-proyek)
-- [2. Fitur Utama & Modul](#2-fitur-utama--modul)
-- [3. Teknologi yang Digunakan](#3-teknologi-yang-digunakan)
-- [4. Arsitektur Docker Compose](#4-arsitektur-docker-compose)
-- [5. Struktur Folder Proyek](#5-struktur-folder-proyek)
-- [6. Prasyarat Sistem](#6-prasyarat-sistem)
-- [7. Instalasi & Setup Cepat](#7-instalasi--setup-cepat)
-- [8. Menjalankan Aplikasi dengan Docker Compose](#8-menjalankan-aplikasi-dengan-docker-compose)
-- [9. Dokumentasi API & Endpoint](#9-dokumentasi-api--endpoint)
-- [10. Migrasi & Seeding Database](#10-migrasi--seeding-database)
-- [11. Pengujian Persistensi Data (Persistence Testing)](#11-pengujian-persistensi-data-persistence-testing)
-- [12. Troubleshooting Umum](#12-troubleshooting-umum)
-- [13. Referensi & Penggunaan AI](#13-referensi--penggunaan-ai)
+- [1. Arsitektur Sistem Tugas 2](#1-arsitektur-sistem-tugas-2)
+- [2. Struktur Folder Proyek](#2-struktur-folder-proyek)
+- [3. Panduan Menjalankan Aplikasi](#3-panduan-menjalankan-aplikasi)
+- [4. Bukti Hasil Pengujian Nyata (Terminal Outputs)](#4-bukti-hasil-pengujian-nyata-terminal-outputs)
+  - [A. Bukti Load Balancing (Rotasi X-Upstream)](#a-bukti-load-balancing-rotasi-x-upstream)
+  - [B. Bukti Rate Limiting (HTTP 429 Too Many Requests)](#b-bukti-rate-limiting-http-429-too-many-requests)
+  - [C. Bukti Security Headers (X-Content-Type-Options: nosniff)](#c-bukti-security-headers-x-content-type-options-nosniff)
+  - [D. Bukti Gzip Compression (Content-Encoding: gzip)](#d-bukti-gzip-compression-content-encoding-gzip)
+  - [E. Bukti Isolasi Port (Host vs Container)](#e-bukti-isolasi-port-host-vs-container)
+- [5. Jawaban Pertanyaan Evaluasi Tugas 2](#5-jawaban-pertanyaan-evaluasi-tugas-2)
+- [6. Fitur Utama & Modul API VetCare](#6-fitur-utama--modul-api-vetcare)
+- [7. Dokumentasi Endpoint REST API](#7-dokumentasi-endpoint-rest-api)
+- [8. Pengujian Persistensi Database](#8-pengujian-persistensi-database)
+- [9. Referensi & Bantuan AI](#9-referensi--bantuan-ai)
 
 ---
 
-## 1. Deskripsi Proyek
+## 1. Arsitektur Sistem Tugas 2
 
-**VetCare API** adalah sistem backend yang mengelola seluruh aktivitas operasional klinik hewan secara terpusat, mulai dari pencatatan data pemilik dan pasien hewan peliharaan, registrasi dokter spesialis, penjadwalan konsultasi medis, rekam resep dan diagnosis pengobatan, hingga transaksi pembayaran klinik.
-
-### Prinsip Desain
-- **Separation of Concerns:** Pemisahan ketat antara Route, Middleware, Validation, Controller, Service, dan ORM.
-- **Data Integrity & Relational Safety:** Menggunakan relasi *Foreign Key* dengan constraint `onDelete: Restrict` untuk mencegah terhapusnya riwayat rekam medis dan janji temu secara tidak disengaja.
-- **Zero-Crash & Centralized Error Handling:** Menangani error validasi Zod, constraint database Prisma (P2002 duplicate, P2003 foreign key, P2025 not found), dan menyamarkan credential sensitif.
-- **Docker-First Architecture:** Startup otomatis dengan healthcheck dependency, otomatisasi eksekusi migrasi, dan seed saat container dijalankan pertama kali.
+```
+                                  +---------------------------------------+
+                                  |         Host Client / Browser         |
+                                  +---------------------------------------+
+                                                      |
+                                          HTTP Request|Port 80:80
+                                          (Port 3000 & 5432 CLOSED)
+                                                      v
++---------------------------------------------------------------------------------------------------+
+| Docker Network: vetcare-network                                                                   |
+|                                                                                                   |
+|  +---------------------------------------------------------------------------------------------+  |
+|  |                                  vetcare-nginx (Nginx 1.31)                                 |  |
+|  |  - Single Entry Point (Port 80)                                                             |  |
+|  |  - Rate Limiting: 5r/s (HTTP 429)                                                           |  |
+|  |  - Gzip Compression: on (application/json)                                                  |  |
+|  |  - Security Headers: X-Content-Type-Options: nosniff (always)                                |  |
+|  |  - Header Tracking: X-Upstream: $upstream_addr                                              |  |
+|  +---------------------------------------------------------------------------------------------+  |
+|                            |                              |                              |        |
+|             Round-Robin    |               Round-Robin    |               Round-Robin    |        |
+|             Load Balance   |               Load Balance   |               Load Balance   |        |
+|                            v                              v                              v        |
+|               +-------------------------+    +-------------------------+    +------------------+  |
+|               |      sc-backend-1       |    |      sc-backend-2       |    |   sc-backend-3   |  |
+|               |    (Replica 1 : 3000)   |    |    (Replica 2 : 3000)   |    | (Replica 3: 3000)|  |
+|               |    Internal Port ONLY   |    |    Internal Port ONLY   |    |Internal Port ONLY|  |
+|               +-------------------------+    +-------------------------+    +------------------+  |
+|                            \                              |                              /        |
+|                             \                             |                             /         |
+|                              +----------------------------+----------------------------+          |
+|                                                           | Prisma ORM Connection                 |
+|                                                           v                                       |
+|                                              +-------------------------+                          |
+|                                              |    vetcare-postgres     |                          |
+|                                              |     (PostgreSQL 16)     |                          |
+|                                              |    Internal Port 5432   |                          |
+|                                              |    (No Host Port Open)  |                          |
+|                                              +-------------------------+                          |
+|                                                           |                                       |
+|                                                           v                                       |
+|                                              +-------------------------+                          |
+|                                              |   Named Docker Volume   |                          |
+|                                              |  vetcare_postgres_data  |                          |
+|                                              +-------------------------+                          |
++---------------------------------------------------------------------------------------------------+
+```
 
 ---
 
-## 2. Fitur Utama & Modul
+## 2. Struktur Folder Proyek
 
-Aplikasi menyediakan 6 modul operasional utama serta endpoint monitoring:
+```
+vetcare-api/
+├── nginx/
+│   └── nginx.conf                 # Konfigurasi Nginx: Reverse Proxy, Upstream Zone, Rate Limit, Gzip
+├── prisma/
+│   ├── migrations/
+│   │   └── 20261112000000_init/
+│   │       └── migration.sql      # DDL SQL skema database awal
+│   ├── schema.prisma              # Definisi model, enum, relasi Prisma ORM
+│   └── seed.ts                    # Script database seeding (idempotent)
+├── src/
+│   ├── config/
+│   │   ├── env.ts                 # Validasi variabel lingkungan
+│   │   ├── prisma.ts              # Inisialisasi Prisma Client singleton
+│   │   └── swagger.ts             # Dokumentasi OpenAPI 3.0 & Swagger UI
+│   ├── controllers/               # Controller HTTP request-response
+│   ├── middlewares/               # Error handling terpusat, Zod validator, 404 handler
+│   ├── routes/                    # Express modular router
+│   ├── services/                  # Business logic & interaksi Prisma ORM
+│   ├── types/                     # Antarmuka TypeScript & kontrak response API
+│   ├── validations/               # Zod schema validation
+│   ├── app.ts                     # Konfigurasi aplikasi Express
+│   └── server.ts                  # Server entrypoint & graceful shutdown
+├── .dockerignore                  # Pengecualian build image Docker
+├── .env.example                   # Template variabel lingkungan
+├── .gitignore
+├── compose.yaml                   # Definisi Docker Compose (Nginx, 3 Backend Replicas, Postgres)
+├── docker-compose.yml             # Mirror compose.yaml untuk kompatibilitas penuh
+├── docker-entrypoint.sh           # Otomatisasi migrasi dan seeding container backend
+├── Dockerfile                     # Multi-stage production build container backend
+├── package.json
+├── tsconfig.json
+├── vetcare-api.postman_collection.json # Koleksi pengujian siap pakai (Postman & Thunder Client)
+└── README.md                      # Dokumentasi lengkap proyek
+```
+
+---
+
+## 3. Panduan Menjalankan Aplikasi
+
+### A. Prasyarat
+- **Docker Desktop** (dengan Docker Engine dan Docker Compose aktif).
+- Port 80 host tidak sedang digunakan oleh aplikasi lain.
+
+### B. Konfigurasi Environment File
+Salin file environment template:
+```bash
+cp .env.example .env
+```
+*(Di Windows PowerShell: `Copy-Item .env.example .env`)*
+
+### C. Build Docker Images
+Bangun image backend dari source code:
+```bash
+docker compose build
+```
+
+### D. Menjalankan Seluruh Service (Nginx, 3 Replicas Backend, PostgreSQL)
+Jalankan seluruh service dalam mode background/detached:
+```bash
+docker compose up -d
+```
+> **Catatan:** Docker Compose akan otomatis membuat 1 container database (`vetcare-postgres`), 3 container replika backend (`sc-backend-1`, `sc-backend-2`, `sc-backend-3`), dan 1 container reverse proxy (`vetcare-nginx`).
+
+Jika Anda ingin menjalankan atau menyesuaikan jumlah replika secara eksplisit melalui terminal:
+```bash
+docker compose up --scale backend=3 -d
+```
+
+### E. Memeriksa Status Container
+Periksa apakah seluruh service berjalan normal:
+```bash
+docker compose ps
+```
+
+Hasil nyata dari status container:
+```text
+NAME               IMAGE                COMMAND                  SERVICE    STATUS                    PORTS
+sc-backend-1       sc-backend           "./docker-entrypoint…"   backend    Up (running)              3000/tcp
+sc-backend-2       sc-backend           "./docker-entrypoint…"   backend    Up (running)              3000/tcp
+sc-backend-3       sc-backend           "./docker-entrypoint…"   backend    Up (running)              3000/tcp
+vetcare-nginx      nginx:alpine         "/docker-entrypoint.…"   nginx      Up (running)              0.0.0.0:80->80/tcp, [::]:80->80/tcp
+vetcare-postgres   postgres:16-alpine   "docker-entrypoint.s…"   database   Up (healthy)              5432/tcp
+```
+
+### F. Menghentikan Seluruh Aplikasi
+Untuk mematikan seluruh container secara aman tanpa menghilangkan data database:
+```bash
+docker compose down
+```
+
+---
+
+## 4. Bukti Hasil Pengujian Nyata (Terminal Outputs)
+
+Pengujian berikut dijalankan langsung pada sistem menggunakan perintah `curl`. Seluruh output di bawah ini merupakan teks hasil eksekusi terminal nyata.
+
+### A. Bukti Load Balancing (Rotasi X-Upstream)
+Nginx mendistribusikan request secara bergiliran (*round-robin*) ke ketiga alamat IP container backend (`172.19.0.3:3000`, `172.19.0.4:3000`, `172.19.0.5:3000`).
+
+**Perintah Terminal:**
+```bash
+for i in {1..6}; do curl -s -I http://localhost/health | grep -i "X-Upstream"; done
+```
+
+**Output Terminal:**
+```text
+X-Upstream: 172.19.0.4:3000
+X-Upstream: 172.19.0.3:3000
+X-Upstream: 172.19.0.5:3000
+X-Upstream: 172.19.0.4:3000
+X-Upstream: 172.19.0.3:3000
+X-Upstream: 172.19.0.5:3000
+```
+> **Analisis:** Header `X-Upstream` berganti secara konsisten melintasi ketiga container backend, membuktikan bahwa mekanisme load balancing Nginx berfungsi 100%.
+
+---
+
+### B. Bukti Rate Limiting (HTTP 429 Too Many Requests)
+Rute `/api/` diproteksi dengan limit 5 request per detik dan toleransi burst 5 request (`limit_req zone=api_limit burst=5 nodelay;`). Ketika terjadi lonjakan request cepat, Nginx mengembalikan status `429 Too Many Requests`.
+
+**Perintah Terminal (Pengujian Status Code):**
+```bash
+for i in {1..10}; do curl -s -o /dev/null -w "Request $i : HTTP %{http_code}\n" http://localhost/api/pets; done
+```
+
+**Output Terminal:**
+```text
+Request 1 : HTTP 200
+Request 2 : HTTP 200
+Request 3 : HTTP 200
+Request 4 : HTTP 200
+Request 5 : HTTP 200
+Request 6 : HTTP 200
+Request 7 : HTTP 429
+Request 8 : HTTP 200
+Request 9 : HTTP 429
+Request 10 : HTTP 429
+```
+
+**Detail Response Lengkap saat Terkena Throttling (HTTP 429):**
+```http
+HTTP/1.1 429 Too Many Requests
+Server: nginx/1.31.8
+Date: Thu, 12 Nov 2026 11:50:52 GMT
+Content-Type: text/html
+Content-Length: 169
+Connection: keep-alive
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+
+<html>
+<head><title>429 Too Many Requests</title></head>
+<body>
+<center><h1>429 Too Many Requests</h1></center>
+<hr><center>nginx/1.31.8</center>
+</body>
+</html>
+```
+> **Analisis:** Nginx menolak kelebihan request dengan status HTTP 429, dan security headers tetap disertakan.
+
+---
+
+### C. Bukti Security Headers (X-Content-Type-Options: nosniff)
+Header keamanan `X-Content-Type-Options: nosniff` selalu diberikan pada setiap respons menggunakan parameter `always`.
+
+**Perintah Terminal:**
+```bash
+curl -I http://localhost/health
+```
+
+**Output Terminal:**
+```http
+HTTP/1.1 200 OK
+Server: nginx/1.31.8
+Date: Thu, 12 Nov 2026 11:51:01 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 100
+Connection: keep-alive
+Content-Security-Policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+Access-Control-Allow-Origin: *
+ETag: W/"64-Zd0FqsJaA+ezC/LNnrnBFbH6B5A"
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+X-Upstream: 172.19.0.5:3000
+```
+> **Analisis:** Header `X-Content-Type-Options: nosniff` berhasil diterima klien.
+
+---
+
+### D. Bukti Gzip Compression (Content-Encoding: gzip)
+Respons payload JSON yang memenuhi syarat panjang minimum (`gzip_min_length 256`) dikompresi menjadi Gzip saat klien menyertakan header `Accept-Encoding: gzip`.
+
+**Perintah Terminal:**
+```bash
+curl -I -H "Accept-Encoding: gzip" http://localhost/api/pets
+```
+
+**Output Terminal:**
+```http
+HTTP/1.1 200 OK
+Server: nginx/1.31.8
+Date: Thu, 12 Nov 2026 11:51:07 GMT
+Content-Type: application/json; charset=utf-8
+Connection: keep-alive
+Vary: Accept-Encoding
+Content-Security-Policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+Access-Control-Allow-Origin: *
+ETag: W/"ac4-0GuXztp/h/qFrCfA2cLtNd/pqew"
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+X-Upstream: 172.19.0.4:3000
+Content-Encoding: gzip
+```
+> **Analisis:** Terdapat header `Content-Encoding: gzip` dan `Vary: Accept-Encoding`, membuktikan modul gzip Nginx aktif mengompresi response backend.
+
+---
+
+### E. Bukti Isolasi Port (Host vs Container)
+Akses langsung ke port lama backend (port 3000) dan port database (port 5432) ditolak/timeout karena port tersebut tidak lagi dipublikasikan ke host. Akses aplikasi kini hanya dapat dilakukan secara sah melalui port 80 Nginx.
+
+**Perintah Terminal:**
+```bash
+# 1. Mengakses port host backend (3000) -> GAGAL / TIMEOUT
+curl --connect-timeout 2 http://localhost:3000
+
+# 2. Mengakses port host database (5432) -> GAGAL / TIMEOUT
+curl --connect-timeout 2 http://localhost:5432
+
+# 3. Mengakses port host Nginx (80) -> BERHASIL
+curl -s -I http://localhost/health | grep -i "HTTP/1.1"
+```
+
+**Output Terminal:**
+```text
+curl: (28) Connection timed out after 2007 milliseconds
+curl: (28) Connection timed out after 2013 milliseconds
+HTTP/1.1 200 OK
+```
+> **Analisis:** Port backend 3000 dan port PostgreSQL 5432 tertutup rapat dari luar host. Nginx menjadi satu-satunya gerbang masuk aplikasi.
+
+---
+
+## 5. Jawaban Pertanyaan Evaluasi Tugas 2
+
+### 1. Kenapa upstream perlu zone? Apa yang terjadi kalau dihapus?
+Direktif `zone` pada blok `upstream` mendefinisikan segmen memori bersama (*shared memory*) yang dapat diakses oleh seluruh *worker process* Nginx untuk menyimpan daftar server upstream serta status dinamisnya (seperti counter pembagian beban round-robin dan tracking kegagalan koneksi). Jika direktif `zone` dihapus, setiap *worker process* Nginx akan menyimpan status upstream secara terpisah pada memori lokal masing-masing proses, yang mengakibatkan pembagian beban (*load balancing*) menjadi tidak merata dan penghitungan status kegagalan replika backend menjadi tidak konsisten antar-worker.
+
+### 2. Kenapa limit_req_status diganti ke 429? Apa bedanya dengan bawaan Nginx?
+Secara default, Nginx menggunakan HTTP status code **503 Service Temporarily Unavailable** ketika permintaan melampaui ambang batas rate limiting, yang secara semantik keliru karena kode 503 mengindikasikan gangguan atau pemeliharaan pada server itu sendiri. Mengubah `limit_req_status` ke **429 Too Many Requests** mematuhi standar RFC 6585 untuk REST API modern, yang secara eksplisit memberitahukan klien bahwa mereka telah melampaui kuota permintaan (*client-side rate limit*) sehingga aplikasi klien dapat menerapkan mekanisme *backoff* atau *retry* secara tepat.
+
+### 3. Kenapa backend dan database tidak punya ports, dan Nginx menjangkau backend lewat apa?
+Direktif `ports` pada service backend dan database dihapus untuk menerapkan prinsip *network isolation* dan *least privilege*, sehingga port internal aplikasi dan database tidak dapat diakses atau diserang langsung oleh pihak luar melalui antarmuka host. Nginx menjangkau ketiga replika backend melalui jaringan virtual internal Docker (`vetcare-network`) memanfaatkan mekanisme *embedded DNS server* Docker (`127.0.0.11`) pada nama service `backend:3000`.
+
+---
+
+## 6. Fitur Utama & Modul API VetCare
+
+Seluruh fitur operasional dari Tugas 1 dipertahankan dan berjalan sempurna:
 
 | Modul | Endpoint Prefix | Deskripsi Fitur |
 |---|---|---|
@@ -49,488 +396,96 @@ Aplikasi menyediakan 6 modul operasional utama serta endpoint monitoring:
 
 ---
 
-## 3. Teknologi yang Digunakan
-
-- **Runtime:** Node.js LTS (v20+ / v26+)
-- **Bahasa Pemrograman:** TypeScript 5.x
-- **Framework Web:** Express.js 4.x
-- **ORM & Database Tooling:** Prisma ORM 5.x
-- **Database Relasional:** PostgreSQL 16 (Alpine Image)
-- **Validasi Data:** Zod (Type-safe runtime schema validator)
-- **Keamanan & Utilitas:** Helmet, CORS, Morgan (Logger)
-- **Dokumentasi API:** Swagger UI (`swagger-ui-express` & OpenAPI 3.0)
-- **Containerization:** Docker (Multi-stage build)
-- **Orkestrasi:** Docker Compose (v2+ / v5+)
-
----
-
-## 4. Arsitektur Docker Compose
-
-Sistem dideploy menggunakan arsitektur 2-tier container dalam satu virtual bridge network (`vetcare-network`):
-
-```
-                        +-----------------------------------------+
-                        |              Host Machine               |
-                        +-----------------------------------------+
-                                     |                |
-                       Port 3000:3000|                |Port 5432:5432
-                                     v                v
-+--------------------------------------------------------------------------+
-| Docker Network: vetcare-network                                          |
-|                                                                          |
-|  +---------------------------+              +-------------------------+  |
-|  |     vetcare-backend       |              |    vetcare-postgres     |  |
-|  |  (Node.js / Express API)  |              |     (PostgreSQL 16)     |  |
-|  |                           |  depends_on  |                         |  |
-|  |   DATABASE_URL:           | -----------> |   Healthcheck:          |  |
-|  |   postgresql://...        | (healthy)    |   pg_isready            |  |
-|  |   @database:5432/...      |              +-------------------------+  |
-|  +---------------------------+                           |               |
-|                                                          v               |
-|                                             +-------------------------+  |
-|                                             |   Named Volume:         |  |
-|                                             |   vetcare_postgres_data |  |
-|                                             |   (/var/lib/postgresql) |  |
-|                                             +-------------------------+  |
-+--------------------------------------------------------------------------+
-```
-
-### Karakteristik Kunci:
-1. **Service `database` (`vetcare-postgres`)**:
-   - Menjalankan PostgreSQL 16 berbasis Alpine yang ringan.
-   - Menggunakan healthcheck bawaan `pg_isready` setiap 5 detik.
-   - Mengaitkan data ke **Named Volume** `vetcare_postgres_data` di host.
-2. **Service `backend` (`vetcare-backend`)**:
-   - Dibangun melalui multi-stage `Dockerfile` (`builder` dan `runner`).
-   - Memiliki dependensi `condition: service_healthy` terhadap service `database`.
-   - Menjalankan `docker-entrypoint.sh` saat booting: otomatis memverifikasi migrasi database (`prisma migrate deploy`) dan seeding data awal (`prisma:seed`) sebelum Express listening.
-
----
-
-## 5. Struktur Folder Proyek
-
-```
-vetcare-api/
-├── prisma/
-│   ├── migrations/
-│   │   └── 20261112000000_init/
-│   │       └── migration.sql      # DDL SQL migrasi awal skema database
-│   ├── schema.prisma              # Definisi model, relasi, dan enum Prisma
-│   └── seed.ts                    # Script pengisian data contoh (idempotent)
-├── src/
-│   ├── config/
-│   │   ├── env.ts                 # Parsing & validasi variabel lingkungan
-│   │   ├── prisma.ts              # Inisialisasi Prisma Client singleton
-│   │   └── swagger.ts             # Spesifikasi OpenAPI 3.0 & Swagger UI handler
-│   ├── controllers/
-│   │   ├── appointment.controller.ts
-│   │   ├── medical-record.controller.ts
-│   │   ├── owner.controller.ts
-│   │   ├── payment.controller.ts
-│   │   ├── pet.controller.ts
-│   │   └── veterinarian.controller.ts
-│   ├── middlewares/
-│   │   ├── error.middleware.ts    # Centralized error handler & Custom AppError
-│   │   ├── not-found.middleware.ts# Handler 404 route tidak terdaftar
-│   │   └── validate.middleware.ts # Zod schema validation middleware
-│   ├── routes/
-│   │   ├── appointment.routes.ts
-│   │   ├── index.ts               # Agregator router utama (/api)
-│   │   ├── medical-record.routes.ts
-│   │   ├── owner.routes.ts
-│   │   ├── payment.routes.ts
-│   │   ├── pet.routes.ts
-│   │   └── veterinarian.routes.ts
-│   ├── services/
-│   │   ├── appointment.service.ts
-│   │   ├── medical-record.service.ts
-│   │   ├── owner.service.ts
-│   │   ├── payment.service.ts
-│   │   ├── pet.service.ts
-│   │   └── veterinarian.service.ts
-│   ├── types/
-│   │   └── api-response.ts        # Interface kontrak standar response API
-│   ├── validations/
-│   │   ├── appointment.validation.ts
-│   │   ├── medical-record.validation.ts
-│   │   ├── owner.validation.ts
-│   │   ├── payment.validation.ts
-│   │   ├── pet.validation.ts
-│   │   └── veterinarian.validation.ts
-│   ├── app.ts                     # Konfigurasi aplikasi Express
-│   └── server.ts                  # Entrypoint server & graceful shutdown
-├── .dockerignore
-├── .env.example                   # Template konfigurasi environment
-├── .gitignore
-├── docker-compose.yml             # Konfigurasi orkestrasi container & volume
-├── docker-entrypoint.sh           # Script otomatisasi startup container backend
-├── Dockerfile                     # Multi-stage production container build
-├── package.json
-├── tsconfig.json
-├── vetcare-api.postman_collection.json # Koleksi pengujian siap pakai
-└── README.md
-```
-
----
-
-## 6. Prasyarat Sistem
-
-Sebelum menjalankan proyek, pastikan perangkat telah terpasang:
-- **Docker Desktop** (dengan Docker Engine dan Docker Compose aktif).
-- *(Opsional untuk dev lokal tanpa docker)*: Node.js LTS (v20+) & Git.
-
----
-
-## 7. Instalasi & Setup Cepat
-
-### Langkah 1: Clone Repository
-```bash
-git clone https://github.com/<username>/vetcare-api.git
-cd vetcare-api
-```
-
-### Langkah 2: Salin File Environment
-Salin file konfigurasi contoh `.env.example` menjadi `.env`:
-
-**Linux/macOS:**
-```bash
-cp .env.example .env
-```
-
-**Windows PowerShell:**
-```powershell
-Copy-Item .env.example .env
-```
-
-Isi konfigurasi default dalam `.env`:
-```env
-PORT=3000
-NODE_ENV=development
-POSTGRES_USER=vetcare_user
-POSTGRES_PASSWORD=example_password
-POSTGRES_DB=vetcare_db
-DATABASE_URL=postgresql://vetcare_user:example_password@database:5432/vetcare_db?schema=public
-```
-
----
-
-## 8. Menjalankan Aplikasi dengan Docker Compose
-
-### Langkah 1: Build Docker Image
-Bangun image backend dari source code:
-```bash
-docker compose build
-```
-*(atau `docker-compose build` jika menggunakan Compose v1)*
-
-### Langkah 2: Jalankan Container (Detached Mode)
-Nyalakan seluruh service di background:
-```bash
-docker compose up -d
-```
-
-### Langkah 3: Periksa Status Container
-Pastikan container database dalam status `healthy` dan backend berstatus `Up`:
-```bash
-docker compose ps
-```
-
-Contoh output:
-```text
-NAME               IMAGE                COMMAND                  SERVICE    STATUS                    PORTS
-vetcare-backend    sc-backend           "./docker-entrypoint…"   backend    Up 20 seconds             0.0.0.0:3000->3000/tcp
-vetcare-postgres   postgres:16-alpine   "docker-entrypoint.s…"   database   Up 25 seconds (healthy)   0.0.0.0:5432->5432/tcp
-```
-
-### Langkah 4: Memeriksa Log Startup
-Untuk melihat log proses migrasi, seeding, dan startup server:
-```bash
-docker compose logs -f backend
-```
-
-### Langkah 5: Menghentikan Container
-Untuk mematikan container secara aman (tanpa menghapus data volume):
-```bash
-docker compose down
-```
-
-> [!WARNING]
-> Jangan menambahkan flag `-v` (`docker compose down -v`) jika tidak ingin menghapus database volume dan seluruh data historis klinik hewan!
-
----
-
-## 9. Dokumentasi API & Endpoint
+## 7. Dokumentasi Endpoint REST API
 
 Setelah container berjalan, API dapat diakses pada:
-- **Base URL:** `http://localhost:3000`
-- **Interactive Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs)
-- **Health Check Endpoint:** [http://localhost:3000/health](http://localhost:3000/health)
+- **Base URL:** `http://localhost`
+- **Interactive Swagger UI:** [http://localhost/docs](http://localhost/docs)
+- **Health Check Endpoint:** [http://localhost/health](http://localhost/health)
 
-### Ringkasan Daftar Endpoint REST API:
+### Ringkasan Endpoint
 
 #### 1. System Endpoints
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/` | Informasi nama API, versi, dokumentasi, dan tautan endpoint |
-| `GET` | `/health` | Memeriksa status kesehatan server dan konektivitas database |
-| `GET` | `/docs` | Halaman antarmuka interaktif Swagger UI |
+- `GET /` — Informasi sistem & daftar modul
+- `GET /health` — Status kesehatan database & uptime
+- `GET /docs` — Swagger UI API Documentation
 
-#### 2. Pet Owners (Pemilik Hewan)
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/api/owners` | Menampilkan seluruh pemilik beserta daftar hewannya |
-| `GET` | `/api/owners/:id` | Menampilkan detail pemilik berdasarkan ID |
-| `POST` | `/api/owners` | Menambahkan pemilik hewan baru |
-| `PUT` | `/api/owners/:id` | Memperbarui data pemilik berdasarkan ID |
-| `DELETE` | `/api/owners/:id` | Menghapus pemilik hewan (dilindungi jika memiliki hewan) |
+#### 2. Pet Owners
+- `GET /api/owners` — Mengambil seluruh pemilik
+- `GET /api/owners/:id` — Detail pemilik berdasarkan ID
+- `POST /api/owners` — Mendaftarkan pemilik baru
+- `PUT /api/owners/:id` — Memperbarui data pemilik
+- `DELETE /api/owners/:id` — Menghapus pemilik
 
-#### 3. Pets (Data Hewan)
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/api/pets` | Menampilkan seluruh hewan peliharaan beserta pemiliknya |
-| `GET` | `/api/pets/:id` | Detail hewan beserta histori janji temu & rekam medis |
-| `GET` | `/api/pets/owner/:ownerId` | Menampilkan seluruh hewan milik ID pemilik tertentu |
-| `POST` | `/api/pets` | Mendaftarkan data hewan baru |
-| `PUT` | `/api/pets/:id` | Memperbarui informasi hewan |
-| `DELETE` | `/api/pets/:id` | Menghapus data hewan (dilindungi dari relasi aktif) |
+#### 3. Pets
+- `GET /api/pets` — Mengambil seluruh hewan
+- `GET /api/pets/:id` — Detail hewan
+- `GET /api/pets/owner/:ownerId` — Daftar hewan berdasarkan ID pemilik
+- `POST /api/pets` — Mendaftarkan hewan baru
+- `PUT /api/pets/:id` — Memperbarui data hewan
+- `DELETE /api/pets/:id` — Menghapus data hewan
 
-#### 4. Veterinarians (Dokter Hewan)
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/api/veterinarians` | Menampilkan daftar seluruh dokter hewan |
-| `GET` | `/api/veterinarians/:id` | Detail dokter beserta jadwal pemeriksaan |
-| `POST` | `/api/veterinarians` | Menambahkan dokter baru |
-| `PUT` | `/api/veterinarians/:id` | Memperbarui data dokter hewan |
-| `DELETE` | `/api/veterinarians/:id` | Menghapus dokter (dilindungi dari catatan historis) |
+#### 4. Veterinarians
+- `GET /api/veterinarians` — Mengambil seluruh dokter hewan
+- `GET /api/veterinarians/:id` — Detail dokter
+- `POST /api/veterinarians` — Mendaftarkan dokter baru
+- `PUT /api/veterinarians/:id` — Memperbarui informasi dokter
+- `DELETE /api/veterinarians/:id` — Menghapus data dokter
 
-#### 5. Appointments (Jadwal Pemeriksaan)
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/api/appointments` | Menampilkan semua jadwal pemeriksaan |
-| `GET` | `/api/appointments/:id` | Detail jadwal beserta data hewan, dokter, rekam & bayar |
-| `GET` | `/api/appointments/pet/:petId` | Jadwal pemeriksaan untuk hewan tertentu |
-| `POST` | `/api/appointments` | Membuat jadwal konsultasi/pemeriksaan baru |
-| `PUT` | `/api/appointments/:id` | Memperbarui informasi jadwal pemeriksaan |
-| `PATCH` | `/api/appointments/:id/status` | Mengubah status janji temu (`SCHEDULED`, `COMPLETED`, `CANCELLED`) |
+#### 5. Appointments
+- `GET /api/appointments` — Mengambil seluruh jadwal
+- `GET /api/appointments/:id` — Detail jadwal kunjungan
+- `GET /api/appointments/pet/:petId` — Jadwal untuk hewan tertentu
+- `POST /api/appointments` — Membuat jadwal kunjungan
+- `PUT /api/appointments/:id` — Memperbarui jadwal
+- `PATCH /api/appointments/:id/status` — Memperbarui status jadwal (`SCHEDULED`, `COMPLETED`, `CANCELLED`)
 
-#### 6. Medical Records (Rekam Medis)
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/api/medical-records` | Menampilkan seluruh riwayat rekam medis klinik |
-| `GET` | `/api/medical-records/:id` | Detail rekam medis berdasarkan ID |
-| `GET` | `/api/medical-records/pet/:petId` | Rekam medis historis untuk hewan tertentu |
-| `POST` | `/api/medical-records` | Mencatat diagnosa, gejala, terapi, dan resep obat |
+#### 6. Medical Records
+- `GET /api/medical-records` — Mengambil seluruh rekam medis
+- `GET /api/medical-records/:id` — Detail rekam medis
+- `GET /api/medical-records/pet/:petId` — Rekam medis untuk hewan tertentu
+- `POST /api/medical-records` — Membuat rekam medis
 
-#### 7. Payments (Pembayaran)
-| HTTP Method | Path | Deskripsi |
-|---|---|---|
-| `GET` | `/api/payments` | Menampilkan seluruh transaksi pembayaran |
-| `GET` | `/api/payments/:id` | Detail transaksi pembayaran berdasarkan ID |
-| `GET` | `/api/payments/owner/:ownerId` | Riwayat pembayaran berdasarkan pemilik hewan |
-| `POST` | `/api/payments` | Mencatat pembayaran baru (`CASH`, `TRANSFER`, `EWALLET`) |
-| `PATCH` | `/api/payments/:id/status` | Mengubah status pembayaran (`PENDING`, `PAID`, `CANCELLED`) |
+#### 7. Payments
+- `GET /api/payments` — Mengambil seluruh transaksi pembayaran
+- `GET /api/payments/:id` — Detail transaksi
+- `GET /api/payments/owner/:ownerId` — Pembayaran berdasarkan ID pemilik
+- `POST /api/payments` — Mencatat transaksi baru
+- `PATCH /api/payments/:id/status` — Memperbarui status bayar (`PENDING`, `PAID`, `CANCELLED`)
 
 ---
 
-### Contoh Format Request & Response
+## 8. Pengujian Persistensi Database
 
-#### 1. Menambahkan Hewan (POST `/api/pets`)
-**Request Body:**
-```json
-{
-  "name": "Milo",
-  "species": "CAT",
-  "breed": "Domestic Shorthair",
-  "gender": "Male",
-  "dateOfBirth": "2023-04-10",
-  "weight": 4.2,
-  "ownerId": 1
-}
-```
+Data operasional klinik disimpan secara aman pada named volume Docker `vetcare_postgres_data`.
 
-**Response Sukses (HTTP 201 Created):**
-```json
-{
-  "success": true,
-  "message": "Pet created successfully",
-  "data": {
-    "id": 1,
-    "name": "Milo",
-    "species": "CAT",
-    "breed": "Domestic Shorthair",
-    "gender": "Male",
-    "dateOfBirth": "2023-04-10T00:00:00.000Z",
-    "weight": 4.2,
-    "ownerId": 1,
-    "createdAt": "2026-11-12T10:50:07.185Z",
-    "updatedAt": "2026-11-12T10:50:07.185Z",
-    "owner": {
-      "id": 1,
-      "fullName": "Andi Pratama",
-      "phone": "081234567890",
-      "email": "andi.pratama@example.com",
-      "address": "Jl. Merdeka No. 10, Jakarta Selatan"
-    }
-  }
-}
-```
-
-#### 2. Response Error Validasi (HTTP 400 Bad Request)
-Jika request body tidak menyertakan field wajib atau format tidak valid:
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": [
-    {
-      "field": "body.breed",
-      "message": "Breed is required"
-    },
-    {
-      "field": "body.species",
-      "message": "Species must be one of: CAT, DOG, RABBIT, BIRD, OTHER"
-    }
-  ]
-}
-```
-
-#### 3. Response Error Data Tidak Ditemukan (HTTP 404 Not Found)
-```json
-{
-  "success": false,
-  "message": "Pet with ID 999 not found"
-}
-```
+Untuk menguji bahwa data tidak hilang saat container dibuat ulang:
+1. Daftarkan hewan baru:
+   ```bash
+   curl -X POST http://localhost/api/pets \
+     -H "Content-Type: application/json" \
+     -d "{\"name\":\"Simba\",\"species\":\"CAT\",\"breed\":\"Persian\",\"gender\":\"Male\",\"dateOfBirth\":\"2024-02-14\",\"weight\":3.8,\"ownerId\":1}"
+   ```
+2. Hentikan container:
+   ```bash
+   docker compose down
+   ```
+3. Jalankan kembali:
+   ```bash
+   docker compose up -d
+   ```
+4. Cek kembali data:
+   ```bash
+   curl http://localhost/api/pets
+   ```
+   Data **Simba** tetap tersedia dan tidak hilang.
 
 ---
 
-## 10. Migrasi & Seeding Database
+## 9. Referensi & Bantuan AI
 
-### Otomatis (Dalam Container)
-Saat container backend dijalankan pertama kali melalui `docker compose up -d`, script `docker-entrypoint.sh` secara otomatis menjalankan:
-1. `npx prisma migrate deploy`
-2. `npm run prisma:seed`
-
-### Manual di dalam Container
-Jika ingin mengeksekusi migrasi atau seeding secara manual di dalam container backend yang sedang berjalan:
-```bash
-# Menjalankan migrasi database
-docker compose exec backend npx prisma migrate deploy
-
-# Menjalankan seed data contoh
-docker compose exec backend npm run prisma:seed
-```
-
-### Data Contoh yang Tersedia (Seeded Data):
-- **3 Pemilik Hewan:**
-  - Andi Pratama (`andi.pratama@example.com`)
-  - Siti Rahma (`siti.rahma@example.com`)
-  - Budi Santoso (`budi.santoso@example.com`)
-- **2 Dokter Hewan:**
-  - drh. Sarah Wijaya, Sp.KHL (`dr.sarah@vetcare.com`)
-  - drh. Hendra Kusuma (`dr.hendra@vetcare.com`)
-- **5 Pasien Hewan:**
-  - Milo (Kucing Shorthair - Andi)
-  - Bruno (Anjing Golden Retriever - Andi)
-  - Luna (Kucing Persia - Siti)
-  - Choco (Kelinci Holland Lop - Siti)
-  - Kiwi (Burung Lovebird - Budi)
-- **3 Jadwal Pemeriksaan:** Berbagai status (`SCHEDULED`, `COMPLETED`)
-- **2 Rekam Medis:** Diagnosis lengkap, gejala, terapi, dan resep obat
-- **3 Transaksi Pembayaran:** Status `PAID` dan `PENDING` dengan berbagai metode bayar
-
-*Catatan: Script seed menggunakan metode `upsert` sehingga aman dan idempotent (tidak akan menghasilkan duplikasi data bila dipanggil berulang kali).*
-
----
-
-## 11. Pengujian Persistensi Data (Persistence Testing)
-
-Pengujian ini membuktikan bahwa konfigurasi **Docker Named Volume (`vetcare_postgres_data`)** berhasil mempertahankan data PostgreSQL meskipun container backend dan container database dimatikan dan dihapus secara total (`docker compose down`).
-
-Ikuti skenario langkah demi langkah berikut:
-
-### Langkah 1: Pastikan Seluruh Container Aktif
-```bash
-docker compose up -d
-docker compose ps
-```
-
-### Langkah 2: Tambahkan Hewan Baru melalui POST API
-Kirim request HTTP POST untuk mendaftarkan hewan bernama **Simba**:
-
-**Menggunakan cURL:**
-```bash
-curl -X POST http://localhost:3000/api/pets \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"Simba\",\"species\":\"CAT\",\"breed\":\"Persian Longhair\",\"gender\":\"Male\",\"dateOfBirth\":\"2024-02-14\",\"weight\":3.8,\"ownerId\":1}"
-```
-
-**Menggunakan PowerShell:**
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/pets" -Method POST -ContentType "application/json" -Body '{"name":"Simba","species":"CAT","breed":"Persian Longhair","gender":"Male","dateOfBirth":"2024-02-14","weight":3.8,"ownerId":1}'
-```
-
-### Langkah 3: Ambil Data Hewan melalui GET API
-Periksa bahwa **Simba** telah tersimpan:
-```bash
-curl http://localhost:3000/api/pets
-```
-
-### Langkah 4: Hentikan dan Hapus Container
-Hentikan container tanpa menyertakan flag `-v`:
-```bash
-docker compose down
-```
-*(Seluruh container `vetcare-backend` dan `vetcare-postgres` telah dihapus dari sistem).*
-
-### Langkah 5: Jalankan Kembali Container
-Buat dan nyalakan ulang container:
-```bash
-docker compose up -d
-```
-
-### Langkah 6: Verifikasi Persistensi Data
-Panggil kembali endpoint GET untuk mengambil data hewan:
-```bash
-curl http://localhost:3000/api/pets
-```
-
-**Hasil Pengujian:**
-Data hewan **Simba** beserta seluruh histori transaksi lainnya tetap utuh dan tersimpan di dalam database PostgreSQL. Ini membuktikan bahwa named volume `vetcare_postgres_data` bekerja secara persisten!
-
----
-
-## 12. Troubleshooting Umum
-
-### 1. Port 3000 atau Port 5432 Sudah Digunakan
-**Gejala:** Error `bind: address already in use` saat `docker compose up`.  
-**Solusi:**
-- Pastikan tidak ada service lokal Node.js atau PostgreSQL lokal yang sedang berjalan di port yang sama.
-- Atau ubah port mapping pada `docker-compose.yml`, misalnya `"3001:3000"` untuk backend atau `"5433:5432"` untuk database.
-
-### 2. Backend Gagal Terhubung ke Database
-**Gejala:** Error Prisma connection timeout atau `P1001: Can't reach database server`.  
-**Solusi:**
-- Di dalam container Docker, host database **wajib** menggunakan nama service Docker Compose yaitu `database`, bukan `localhost`.
-- Format koneksi di `.env` dan `docker-compose.yml`:
-  `postgresql://vetcare_user:example_password@database:5432/vetcare_db?schema=public`
-- Pastikan healthcheck service database telah berstatus `healthy`.
-
-### 3. File Entrypoint Menampilkan Error Syntax pada Linux Container
-**Gejala:** `exec: ./docker-entrypoint.sh: no such file or directory` atau `\r: command not found`.  
-**Solusi:**
-- Ini terjadi bila file dibuat di Windows dengan format baris CRLF (`\r\n`).
-- Pada `Dockerfile` proyek ini telah ditambahkan perintah otomatis:
-  `RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh`
-  sehingga aman dari permasalahan format Windows.
-
----
-
-## 13. Referensi & Penggunaan AI
-
-- Dokumentasi Resmi Docker: [https://docs.docker.com/](https://docs.docker.com/)
-- Dokumentasi Docker Compose: [https://docs.docker.com/compose/](https://docs.docker.com/compose/)
-- Dokumentasi Resmi Prisma ORM: [https://www.prisma.io/docs](https://www.prisma.io/docs)
-- Dokumentasi Express.js: [https://expressjs.com/](https://expressjs.com/)
-- Dokumentasi TypeScript: [https://www.typescriptlang.org/docs/](https://www.typescriptlang.org/docs/)
-- Bantuan AI: Proyek ini disusun dan diimplementasikan dengan bantuan Antigravity AI Assistant (DeepMind) untuk perancangan arsitektur backend, validasi Zod, Docker multi-stage build, skema relasional Prisma, serta pengujian persistensi data.
+- Dokumentasi Resmi Nginx: [https://nginx.org/en/docs/](https://nginx.org/en/docs/)
+- Dokumentasi Docker Compose Specification: [https://docs.docker.com/compose/](https://docs.docker.com/compose/)
+- Dokumentasi Prisma ORM: [https://www.prisma.io/docs](https://www.prisma.io/docs)
+- RFC 6585 (Additional HTTP Status Codes - 429 Too Many Requests): [https://datatracker.ietf.org/doc/html/rfc6585](https://datatracker.ietf.org/doc/html/rfc6585)
+- Bantuan AI: Disusun dan diimplementasikan dengan bantuan Antigravity AI Assistant (DeepMind) untuk konfigurasi Nginx reverse proxy, load balancing shared zone, rate limiting Zod/Nginx, dan verifikasi terminal testing.
